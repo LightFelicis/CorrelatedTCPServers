@@ -15,15 +15,7 @@ public:
         if (!std::regex_match(s.c_str(), m, startlineRegex)) {
             return {};
         }
-        /*
-         * Task description specifies that providing method other than GET/HEAD should be treated as a
-         * "not implemented" error rather than "wrong argument" error, so StartLine stores
-         * additional information if method is implemented.
-         **/
-        static const std::array<std::string, 2> implementedMethods = {"GET", "HEAD"};
-        auto it = std::find(implementedMethods.begin(), implementedMethods.end(), m[1]);
-        bool implemented = (it != implementedMethods.end());
-        return StartLine(m[1], m[2], m[3], implemented);
+        return StartLine(m[1], m[2], m[3]);
     }
 
     const std::string &getMethod() const {
@@ -38,17 +30,11 @@ public:
         return httpVersion;
     }
 
-    bool isMethodImplemented() const {
-        return isImplemented;
-    }
-
 private:
     StartLine(const std::string &method, const std::string &requestTarget,
-              const std::string &httpVersion, bool isImplemented) :
-            method(method), requestTarget(requestTarget), httpVersion(httpVersion),
-            isImplemented(isImplemented) {};
+              const std::string &httpVersion) :
+            method(method), requestTarget(requestTarget), httpVersion(httpVersion) {};
     std::string method;
-    bool isImplemented;
     std::string requestTarget;
     std::string httpVersion;
 };
@@ -57,7 +43,7 @@ private:
 class HeaderField {
 public:
     static std::optional<HeaderField> validateString(const std::string &s) {
-        const std::regex headerFieldRegex(R"regex(([\S^:]+):( *)(\S+)( *))regex");
+        const std::regex headerFieldRegex(R"regex(([^\s:]+):( *)(\S+)( *))regex");
         std::cmatch m;
         if (!std::regex_match(s.c_str(), m, headerFieldRegex)) {
             return {};
@@ -73,37 +59,8 @@ public:
         return HeaderField(m[1], m[3], ignored);
     }
 
-    const std::string &getValue() const {
-        return value;
-    }
-
-    const std::string &getName() const {
-        return name;
-    }
-
-    const bool isIgnored() const {
-        return ignored;
-    }
-
-    void setIsIgnored(bool value) {
-        ignored = value;
-    }
-
-    bool operator==(const HeaderField &B) {
-        return name == B.name && value == B.value && isIgnored() == B.isIgnored();
-    }
-
-private:
-    HeaderField(std::string name, std::string value, bool ignored) : name(name), value(value), ignored(ignored) {}
-    std::string name;
-    std::string value;
-    bool ignored;
-};
-
-class RequestHeaderField : public HeaderField {
-public:
-    static std::optional<HeaderField> validateString(std::string s) {
-        auto res = HeaderField::validateString(s);
+    static std::optional<HeaderField> validateRequestString(const std::string &s) {
+        auto res = validateString(s);
         if (!res) {
             return {};
         }
@@ -119,15 +76,41 @@ public:
         res.value().setIsIgnored(ignored);
         return res;
     }
+
+    const std::string &getValue() const {
+        return value;
+    }
+
+    const std::string &getName() const {
+        return name;
+    }
+
+    const bool isIgnored() const {
+        return ignored;
+    }
+
+    void setIsIgnored(bool ign) {
+        ignored = ign;
+    }
+
+    bool operator==(const HeaderField &hf) {
+        return name == hf.name;
+    }
+
+private:
+    HeaderField(std::string name, std::string value, bool ignored) : name(name), value(value), ignored(ignored) {}
+    std::string name;
+    std::string value;
+    bool ignored;
 };
 
 class HttpMessage {
 public:
-    static std::string generateResponseStatusLine(std::string statusCode, std::string reasonPhrase) {
+    static std::string generateResponseStatusLine(const std::string &statusCode, const std::string &reasonPhrase) {
         return "HTTP/1.1 " +  statusCode + " " + reasonPhrase + "\n\r";
     }
 
-    static std::optional<HttpMessage> validateHttpRequest(std::vector<std::string> s) {
+    static std::optional<HttpMessage> validateHttpRequest(const std::vector<std::string> &s) {
         if (s.size() == 0) {
             return {};
         }
@@ -137,7 +120,7 @@ public:
         }
         std::vector<HeaderField> headerFields;
         for (size_t i = 1; i < s.size(); i++) {
-            auto headerField = RequestHeaderField::validateString(s[i]);
+            auto headerField = HeaderField::validateRequestString(s[i]);
             if (!headerField.has_value()) {
                 return {};
             }
@@ -148,8 +131,7 @@ public:
              * Each not ignored header field's name has to be unique. If one appears more than once,
              * it's treated as "wrong argument" error.
              * */
-            if (auto it = std::find(headerFields.begin(), headerFields.end(), headerField.value());
-                it != headerFields.end()) {
+            if (std::find(headerFields.begin(), headerFields.end(), headerField.value()) != headerFields.end()) {
                 return {};
             }
             headerFields.push_back(headerField.value());

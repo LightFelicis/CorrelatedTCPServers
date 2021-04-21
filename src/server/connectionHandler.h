@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <filesystem>
 
 #include "../utils/serverAssertions.h"
 #include "../utils/httpParsers.h"
@@ -92,12 +93,16 @@ private:
             sendError(socket, "Bad syntax", "400");
             return true;
         }
-        // Tu ifowanie?
         auto validatedMessage = validated.value();
-        if (!validatedMessage.getStartLine().isMethodImplemented()) {
+        if (validatedMessage.getStartLine().getMethod() == "GET") {
+
+        } else if (validatedMessage.getStartLine().getMethod() == "HEAD"){
+
+        } else {
             sendError(socket, "Not implemented", "501");
             return true;
         }
+
     }
 
     void sendError(int socket, const std::string &reasoning, const std::string &statusCode) {
@@ -105,6 +110,22 @@ private:
         statusLine += "\r\nConnection: close\r\n\r\n";
         exit_on_fail_with_errno(write(socket, statusLine.c_str(), statusLine.size()) >= 0, "Write() failed.");
     }
+
+    void handleGetOrHeadRequest(const HttpMessage &hm, int socket, bool writeContent) {
+        std::uintmax_t fileSize = 0;
+        std::string contentType = "application/octet-stream";
+        if (!std::filesystem::exists(hm.getStartLine().getRequestTarget())) { // Search in correlated files list.
+
+        } else {
+            fileSize = std::filesystem::file_size(hm.getStartLine().getRequestTarget());
+            exit_on_fail(fileSize != static_cast<std::uintmax_t>(-1), "Checking the size of file failed()");
+            if (writeContent) {
+                std::ifstream is(hm.getStartLine().getRequestTarget());
+                
+            }
+        }
+    }
+
 
 };
 
