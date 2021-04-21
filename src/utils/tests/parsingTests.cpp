@@ -16,7 +16,7 @@ TEST(Startline_parsing, invalid_request) {
 }
 
 TEST(Startline_parsing, invalid_request_http_version) {
-    std::optional<StartLine> res = StartLine::validateString("HEAD /plik HTTP/1.2");
+    std::optional<StartLine> res = StartLine::validateString("HEAD /plik HTTP/1,1");
     ASSERT_FALSE(res);
 }
 
@@ -45,6 +45,11 @@ TEST(HeaderField_parsing, simple) {
 
 TEST(HeaderField_parsing, missing_colon) {
     std::optional<HeaderField> res = HeaderField::validateString("ala makota");
+    ASSERT_FALSE(res);
+}
+
+TEST(HeaderField_parsing, whitespace_error) {
+    std::optional<HeaderField> res = HeaderField::validateString("ala : makota");
     ASSERT_FALSE(res);
 }
 

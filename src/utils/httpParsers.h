@@ -9,8 +9,8 @@
 
 class StartLine {
 public:
-    static std::optional<StartLine> validateString(std::string s) {
-        const std::regex startlineRegex(R"regex(([^\s]+) (/[a-zA-Z0-9.-/]+) (HTTP/1.1))regex");
+    static std::optional<StartLine> validateString(const std::string &s) {
+        const std::regex startlineRegex(R"regex((\w+) (/[a-zA-Z0-9.-/]+) (HTTP/1[.]1))regex");
         std::cmatch m;
         if (!std::regex_match(s.c_str(), m, startlineRegex)) {
             return {};
@@ -26,15 +26,15 @@ public:
         return StartLine(m[1], m[2], m[3], implemented);
     }
 
-    std::string getMethod() const {
+    const std::string &getMethod() const {
         return method;
     }
 
-    std::string getRequestTarget() const {
+    const std::string &getRequestTarget() const {
         return requestTarget;
     }
 
-    std::string getHttpVersion() const {
+    const std::string &getHttpVersion() const {
         return httpVersion;
     }
 
@@ -43,7 +43,8 @@ public:
     }
 
 private:
-    StartLine(std::string method, std::string requestTarget, std::string httpVersion, bool isImplemented) :
+    StartLine(const std::string &method, const std::string &requestTarget,
+              const std::string &httpVersion, bool isImplemented) :
             method(method), requestTarget(requestTarget), httpVersion(httpVersion),
             isImplemented(isImplemented) {};
     std::string method;
@@ -55,8 +56,8 @@ private:
 
 class HeaderField {
 public:
-    static std::optional<HeaderField> validateString(std::string s) {
-        const std::regex headerFieldRegex(R"regex(([^:]+):([ ]*)([^\s]+)([ ]*))regex");
+    static std::optional<HeaderField> validateString(const std::string &s) {
+        const std::regex headerFieldRegex(R"regex(([\S^:]+):( *)(\S+)( *))regex");
         std::cmatch m;
         if (!std::regex_match(s.c_str(), m, headerFieldRegex)) {
             return {};

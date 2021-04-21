@@ -17,6 +17,7 @@ struct CorrelatedFile {
         {
             tokens.push_back(substr);
         }
+        exit_on_fail(tokens.size() == 3, "Bad servers file format");
         resource = tokens[0];
         ipAddress = tokens[1];
         port = tokens[2];
@@ -39,57 +40,72 @@ public:
         while (std::getline(is, line)) {
             correlatedFiles.emplace_back(line);
         }
+        exit_on_fail(!is.failbit, "Cannot read file " + correlatedServersFile);
     }
 
     void handleIncomingConnection(int socket) {
         bool hasClosedConnection = false;
         std::string remainingCharacters = "";
         bool clrfBefore = false;
+        bool isOffsetInBuffer = false;
+        std::vector<std::string> httpRequestTokens;
+
         while (!hasClosedConnection) {
-            std::vector<std::string> httpRequestTokens;
             char buffer[4096];
-            int len = read(socket, buffer, sizeof(buffer));
-            exit_on_fail(len >= 0, "Read() failed.");
-            // Iterate over the buffer and split by \n\r characters
-            for (int i = 0; i < len - 1; i++) {
-                if (buffer[i] != '\n' && buffer[i+1] != '\r') {
+            int len = read(socket, buffer+isOffsetInBuffer, sizeof(buffer) - isOffsetInBuffer);
+            exit_on_fail_with_errno(len >= 0, "Read() failed.");
+            // Iterate over the buffer and split by \r\n characters
+            int i = 0;
+            for (i = 0; i < len - 1; i++) {
+                if (!(buffer[i] == '\r' && buffer[i+1] == '\n')) {
                     remainingCharacters += buffer[i];
                     clrfBefore = false;
-                } else if (clrfBefore) {
+                } else if (!clrfBefore) {
+                    httpRequestTokens.push_back(remainingCharacters);
+                    remainingCharacters.clear();
+                    clrfBefore = true;
+                    i++;
+                } else {
                     if (handleSingleRequest(httpRequestTokens, socket)) {
                         hasClosedConnection = true;
                     }
-                } else {
+                    httpRequestTokens.clear();
+                    clrfBefore = false;
                     i++;
-                    httpRequestTokens.push_back(remainingCharacters);
-                    remainingCharacters = "";
-                    clrfBefore = true;
                 }
             }
+            if (i == len - 1) { // Additional character unused
+                buffer[0] = buffer[i];
+                isOffsetInBuffer = true;
+            } else {
+                isOffsetInBuffer = false;
+            }
+
         }
     }
 private:
     std::vector<CorrelatedFile> correlatedFiles;
     std::string filesDir;
     bool handleSingleRequest(std::vector<std::string> tokens, int socket) {
-        auto validated = HttpMessage::validateHttpRequest(tokens);
+        std::optional<HttpMessage> validated = HttpMessage::validateHttpRequest(tokens);
         if (!validated) {
-            send400Error(socket, "Bad syntax");
+            sendError(socket, "Bad syntax", "400");
             return true;
         }
         // Tu ifowanie?
+        auto validatedMessage = validated.value();
+        if (!validatedMessage.getStartLine().isMethodImplemented()) {
+            sendError(socket, "Not implemented", "501");
+            return true;
+        }
     }
 
-    int send400Error(int socket, std::string reasoning) {
-        std::string statusLine = HttpMessage::generateResponseStatusLine("400", reasoning);
-        statusLine += "\n\rConnection: close\n\r\n\r";
-        char *buffer = (char *)malloc(statusLine.size());
-        for (int i = 0; i < statusLine.size(); i++) {
-            buffer[i] = statusLine[i];
-        }
-        write(socket, buffer, statusLine.size());
-        free(buffer);
+    void sendError(int socket, const std::string &reasoning, const std::string &statusCode) {
+        std::string statusLine = HttpMessage::generateResponseStatusLine(statusCode, reasoning);
+        statusLine += "\r\nConnection: close\r\n\r\n";
+        exit_on_fail_with_errno(write(socket, statusLine.c_str(), statusLine.size()) >= 0, "Write() failed.");
     }
+
 };
 
 

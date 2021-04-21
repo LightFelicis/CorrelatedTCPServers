@@ -7,6 +7,8 @@ SET(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(files
         src/utils/httpParsers.h
         src/server/connectionHandler.h
+        src/utils/serverAssertions.h
+        src/utils/serverAssertions.cpp
         )
 
 # Locate GTest
