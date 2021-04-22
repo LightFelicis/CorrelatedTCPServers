@@ -139,6 +139,15 @@ public:
         return HttpMessage(startLine.value(), headerFields);
     }
 
+    static std::string generateHttpString(const std::vector<std::string> tokens) {
+        std::string result = "";
+        for (const auto &token : tokens) {
+            result += (token + "\r\n");
+        }
+        result += "\r\n";
+        return result;
+    }
+
     const StartLine &getStartLine() const {
         return sl;
     }

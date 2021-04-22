@@ -28,6 +28,10 @@ struct CorrelatedFile {
         return resource == cf.resource && ipAddress == cf.ipAddress && port == cf.port;
     }
 
+    std::string toString() const {
+        return "http://" + ipAddress + ":" + port + resource;
+    }
+
     std::string resource;
     std::string ipAddress;
     std::string port;
@@ -94,39 +98,83 @@ private:
             return true;
         }
         auto validatedMessage = validated.value();
-        if (validatedMessage.getStartLine().getMethod() == "GET") {
-
-        } else if (validatedMessage.getStartLine().getMethod() == "HEAD"){
-
+        const std::string method = validatedMessage.getStartLine().getMethod();
+        if (method == "GET" || method == "HEAD") {
+            handleGetOrHeadRequest(validatedMessage, socket, method == "GET");
         } else {
             sendError(socket, "Not implemented", "501");
             return true;
         }
-
+        // Check if "Connection: close" is in the headers.
+        bool closeConnection = false;
+        for (const HeaderField &header : validatedMessage.getHeaderFields()) {
+            if (header.getName() == "Connection" && header.getValue() == "close") {
+                closeConnection = true;
+            }
+        }
+        return closeConnection;
     }
 
     void sendError(int socket, const std::string &reasoning, const std::string &statusCode) {
         std::string statusLine = HttpMessage::generateResponseStatusLine(statusCode, reasoning);
-        statusLine += "\r\nConnection: close\r\n\r\n";
-        exit_on_fail_with_errno(write(socket, statusLine.c_str(), statusLine.size()) >= 0, "Write() failed.");
+        std::string toSend = HttpMessage::generateHttpString({statusLine,
+                                                              "Connection: close",
+                                                             });
+        exit_on_fail_with_errno(write(socket, toSend.c_str(), toSend.size()) >= 0, "Write() failed.");
+    }
+
+    void sendOctetStream(int socket, const char *buffer, std::streamsize bytesToSend, bool includeData) {
+        std::string contentType = "application/octet-stream";
+        std::string statusLine = HttpMessage::generateResponseStatusLine("200", "OK");
+        std::string toSend = HttpMessage::generateHttpString({statusLine,
+                                                "Content-Type: application/octet-stream",
+                                                "Content-Length: " + std::to_string(bytesToSend)
+                                                });
+        // Adding the buffer
+        if (includeData) {
+            for (int i = 0; i < bytesToSend; i++) {
+                toSend += buffer[i];
+            }
+        }
+        exit_on_fail_with_errno(write(socket, toSend.c_str(), toSend.size()) >= 0, "Write() failed.");
+    }
+
+    void sendRedirectToCorrelatedServer(int socket, const CorrelatedFile &cf) {
+        std::string statusLine = HttpMessage::generateResponseStatusLine("302", "Redirected");
+        std::string toSend = HttpMessage::generateHttpString({statusLine,
+                                                              "Location: " + cf.toString(),
+                                                             });
+        exit_on_fail_with_errno(write(socket, toSend.c_str(), toSend.size()) >= 0, "Write() failed.");
     }
 
     void handleGetOrHeadRequest(const HttpMessage &hm, int socket, bool writeContent) {
         std::uintmax_t fileSize = 0;
         std::string contentType = "application/octet-stream";
-        if (!std::filesystem::exists(hm.getStartLine().getRequestTarget())) { // Search in correlated files list.
+        std::string filename = hm.getStartLine().getRequestTarget();
 
+        if (!std::filesystem::exists(filename)) { // Search in correlated files list.
+            bool found = false;
+            for (const CorrelatedFile &f : correlatedFiles) {
+                if (f.resource == filename) {
+                    found = true;
+                    sendRedirectToCorrelatedServer(socket, f);
+                    break;
+                }
+            }
+
+            if (!found) {
+                sendError(socket, "Not found", "404");
+            }
         } else {
-            fileSize = std::filesystem::file_size(hm.getStartLine().getRequestTarget());
-            exit_on_fail(fileSize != static_cast<std::uintmax_t>(-1), "Checking the size of file failed()");
-            if (writeContent) {
-                std::ifstream is(hm.getStartLine().getRequestTarget());
-                
+            std::ifstream is(filename, std::ios::in | std::ios::binary);
+            char *buffer = new char[4096];
+            while(is.read(buffer, 4096)) {
+                exit_on_fail(!is.failbit, "Reading file has failed.");
+                std::streamsize bytesRead = is.gcount();
+                sendOctetStream(socket, buffer, bytesRead, writeContent);
             }
         }
     }
-
-
 };
 
 
