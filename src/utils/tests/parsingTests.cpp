@@ -8,6 +8,7 @@ TEST(Startline_parsing, simple) {
     ASSERT_EQ(res.value().getMethod(), "GET");
     ASSERT_EQ(res.value().getHttpVersion(), "HTTP/1.1");
     ASSERT_EQ(res.value().getRequestTarget(), "/pliK1/2");
+    ASSERT_TRUE(res.value().validCharacters());
 }
 
 TEST(Startline_parsing, invalid_request_http_version) {
@@ -18,6 +19,12 @@ TEST(Startline_parsing, invalid_request_http_version) {
 TEST(Startline_parsing, too_many_whitespaces) {
     std::optional<StartLine> res = StartLine::validateString("HEAD  /plik HTTP/1.1");
     ASSERT_FALSE(res);
+}
+
+TEST(Startline_parsing, bad_chars) {
+    std::optional<StartLine> res = StartLine::validateString("HEAD /plik? HTTP/1.1");
+    ASSERT_TRUE(res);
+    ASSERT_FALSE(res.value().validCharacters());
 }
 
 TEST(Startline_parsing, no_backslash_in_path) {

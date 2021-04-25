@@ -10,12 +10,17 @@
 class StartLine {
 public:
     static std::optional<StartLine> validateString(const std::string &s) {
-        const std::regex startlineRegex(R"regex((\w+) (/[a-zA-Z0-9.-/]+) (HTTP/1[.]1))regex");
-        std::cmatch m;
-        if (!std::regex_match(s.c_str(), m, startlineRegex)) {
+        std::cout << "s = {" << s << "}\n";
+        const std::regex startlineRegex(R"regex((\w+) ([/].*) (HTTP/1[.]1))regex");
+        std::cmatch m, tmp;
+        if (!std::regex_match(s, m, startlineRegex)) {
             return {};
         }
-        return StartLine(m[1], m[2], m[3]);
+        std::cout << "Wstępna walidacja ok, m[2] = " << m[2] << "\n";
+
+        bool validChars = (
+                std::regex_match(m[2].str().c_str(), tmp, std::regex("[/][a-zA-Z0-9./-]*")));
+        return StartLine(m[1], m[2], m[3], validChars);
     }
 
     const std::string &getMethod() const {
@@ -30,13 +35,18 @@ public:
         return httpVersion;
     }
 
+    bool validCharacters() const {
+        return validChars;
+    }
+
 private:
     StartLine(const std::string &method, const std::string &requestTarget,
-              const std::string &httpVersion) :
-            method(method), requestTarget(requestTarget), httpVersion(httpVersion) {};
+              const std::string &httpVersion, bool validChars) :
+            method(method), requestTarget(requestTarget), httpVersion(httpVersion), validChars(validChars) {};
     std::string method;
     std::string requestTarget;
     std::string httpVersion;
+    bool validChars;
 };
 
 
@@ -119,10 +129,12 @@ public:
 
     static std::optional<HttpMessage> validateHttpRequest(const std::vector<std::string> &s) {
         if (s.size() == 0) {
+            std::cerr << "Wywala się s.size() == 0\n";
             return {};
         }
         auto startLine = StartLine::validateString(s[0]);
         if (!startLine.has_value()) {
+            std::cerr << "Wywala się startline == 0\n";
             return {};
         }
         std::vector<HeaderField> headerFields;

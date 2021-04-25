@@ -94,10 +94,19 @@ private:
     std::vector<CorrelatedFile> correlatedFiles;
     std::string filesDir;
     bool handleSingleRequest(std::vector<std::string> tokens, int socket) {
+        for (auto t : tokens) {
+            std::cout << "{ " << t << "}\n";
+        }
         std::optional<HttpMessage> validated = HttpMessage::validateHttpRequest(tokens);
         if (!validated) {
+            std::cout << "Uwaga uwaga wypisuje 400 bad syntax\n";
             sendError(socket, "Bad syntax", "400");
             return true;
+        }
+        if (!validated.value().getStartLine().validCharacters()) {
+            std::cout << "Uwaga uwaga wypisuje 404\n";
+            sendError(socket, "Not found", "404");
+            return false;
         }
         auto validatedMessage = validated.value();
         const std::string method = validatedMessage.getStartLine().getMethod();
@@ -119,9 +128,15 @@ private:
 
     void sendError(int socket, const std::string &reasoning, const std::string &statusCode) {
         std::string statusLine = HttpMessage::generateResponseStatusLine(statusCode, reasoning);
-        std::string toSend = HttpMessage::generateHttpString({statusLine,
-                                                              "Connection: close",
-                                                             });
+        std::string toSend;
+        if (statusCode != "404") {
+            toSend = HttpMessage::generateHttpString({statusLine,
+                                                      "Connection: close",
+                                                      });
+        } else {
+            toSend = HttpMessage::generateHttpString({statusLine});
+        }
+
         exit_on_fail_with_errno(write(socket, toSend.c_str(), toSend.size()) >= 0, "Write() failed.");
     }
 
@@ -144,13 +159,15 @@ private:
 
     void handleGetOrHeadRequest(const HttpMessage &hm, int socket, bool writeContent) {
         std::string filename = hm.getStartLine().getRequestTarget();
-        std::cout << "Dostałam plik : " << filename << std::endl;
         if (!validatePath(filesDir, filename)) {
             sendError(socket, "400", "Malicious path detected");
             return;
         }
         filename = filesDir + filename;
-        std::cout << "Znormalizowana ścieżka: " << filename << std::endl;
+        if (!std::filesystem::is_regular_file(filename)) {
+            sendError(socket, "Not found", "404");
+            return;
+        }
 
         if (!std::filesystem::exists(filename)) { // Search in correlated files list.
             std::cerr << "Nie ma takiego pliku, sprawdzam w correlated..." << std::endl;
