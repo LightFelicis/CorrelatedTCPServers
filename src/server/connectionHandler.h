@@ -6,6 +6,7 @@
 #include <sstream>
 #include <iostream>
 #include <filesystem>
+#include <unistd.h>
 
 #include "../utils/serverAssertions.h"
 #include "../utils/httpParsers.h"

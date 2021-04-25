@@ -1,5 +1,6 @@
 #ifndef ZALICZENIOWE1_SERVERASSERTIONS_H
 #define ZALICZENIOWE1_SERVERASSERTIONS_H
+#include <string>
 
 void exit_on_fail(bool condition, const std::string &error_message);
 
