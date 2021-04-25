@@ -42,10 +42,11 @@ public:
     ConnectionHandler(const std::string &filesDirectory, const std::string &correlatedServersFile) : filesDir(filesDirectory){
         std::ifstream is(correlatedServersFile);
         std::string line;
+
         while (std::getline(is, line)) {
             correlatedFiles.emplace_back(line);
         }
-        exit_on_fail(!is.failbit, "Cannot read file " + correlatedServersFile);
+        exit_on_fail(is.eof(), "Cannot read file " + correlatedServersFile);
     }
 
     void handleIncomingConnection(int socket) {
