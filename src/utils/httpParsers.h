@@ -10,16 +10,14 @@
 class StartLine {
 public:
     static std::optional<StartLine> validateString(const std::string &s) {
-        std::cout << "s = {" << s << "}\n";
-        const std::regex startlineRegex(R"regex((\w+) ([/].*) (HTTP/1[.]1))regex");
-        std::cmatch m, tmp;
+        const std::regex startlineRegex(R"regex((\w+) ([/]([^ ]*)) (HTTP/1[.]1))regex");
+        const std::regex validTarget("[/][a-zA-Z0-9./-]*");
+        std::smatch m, tmp;
         if (!std::regex_match(s, m, startlineRegex)) {
             return {};
         }
-        std::cout << "Wstępna walidacja ok, m[2] = " << m[2] << "\n";
-
-        bool validChars = (
-                std::regex_match(m[2].str().c_str(), tmp, std::regex("[/][a-zA-Z0-9./-]*")));
+        std::string target = m[2];
+        bool validChars = std::regex_match(target, tmp, validTarget);
         return StartLine(m[1], m[2], m[3], validChars);
     }
 
@@ -65,9 +63,9 @@ public:
         std::string method = m[1];
         std::string value = m[3];
         std::transform(method.begin(), method.end(), method.begin(),
-                       [](unsigned char c){ return std::tolower(c); });
+                       [](unsigned char c) { return std::tolower(c); });
         std::transform(value.begin(), value.end(), value.begin(),
-                       [](unsigned char c){ return std::tolower(c); });
+                       [](unsigned char c) { return std::tolower(c); });
         static const std::array<std::string, 4> acceptedFieldnames = {"connection", "content-length",
                                                                       "server", "content-Type"};
         auto it = std::find(acceptedFieldnames.begin(), acceptedFieldnames.end(), method);
@@ -116,6 +114,7 @@ public:
 
 private:
     HeaderField(std::string name, std::string value, bool ignored) : name(name), value(value), ignored(ignored) {}
+
     std::string name;
     std::string value;
     bool ignored;
@@ -124,17 +123,15 @@ private:
 class HttpMessage {
 public:
     static std::string generateResponseStatusLine(const std::string &statusCode, const std::string &reasonPhrase) {
-        return "HTTP/1.1 " +  statusCode + " " + reasonPhrase;
+        return "HTTP/1.1 " + statusCode + " " + reasonPhrase;
     }
 
     static std::optional<HttpMessage> validateHttpRequest(const std::vector<std::string> &s) {
         if (s.size() == 0) {
-            std::cerr << "Wywala się s.size() == 0\n";
             return {};
         }
         auto startLine = StartLine::validateString(s[0]);
         if (!startLine.has_value()) {
-            std::cerr << "Wywala się startline == 0\n";
             return {};
         }
         std::vector<HeaderField> headerFields;
@@ -178,6 +175,7 @@ public:
 private:
     StartLine sl;
     std::vector<HeaderField> hf;
+
     HttpMessage(const StartLine &sl, const std::vector<HeaderField> &hf) : sl(sl), hf(hf) {}
 };
 

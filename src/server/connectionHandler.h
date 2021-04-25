@@ -1,5 +1,6 @@
-#ifndef SIK_CONNECTIONHANDLER_H
-#define SIK_CONNECTIONHANDLER_H
+#ifndef ZALICZENIOWE1_CONNECTIONHANDLER_H
+#define ZALICZENIOWE1_CONNECTIONHANDLER_H
+
 #include <vector>
 #include <fstream>
 #include <sstream>
@@ -15,8 +16,7 @@ struct CorrelatedFile {
         std::istringstream ss(s);
         std::string substr;
         std::vector<std::string> tokens;
-        while(getline(ss, substr, '\t'))
-        {
+        while (getline(ss, substr, '\t')) {
             tokens.push_back(substr);
         }
         exit_on_fail(tokens.size() == 3, "Bad servers file format");
@@ -40,7 +40,8 @@ struct CorrelatedFile {
 
 class ConnectionHandler {
 public:
-    ConnectionHandler(const std::string &filesDirectory, const std::string &correlatedServersFile) : filesDir(filesDirectory){
+    ConnectionHandler(const std::string &filesDirectory, const std::string &correlatedServersFile) : filesDir(
+            filesDirectory) {
         std::ifstream is(correlatedServersFile);
         std::string line;
 
@@ -56,15 +57,14 @@ public:
         bool clrfBefore = false;
         bool isOffsetInBuffer = false;
         std::vector<std::string> httpRequestTokens;
-
+        char buffer[4096];
         while (!hasClosedConnection) {
-            char buffer[4096];
-            int len = read(socket, buffer+isOffsetInBuffer, sizeof(buffer) - isOffsetInBuffer);
+            int len = read(socket, buffer + isOffsetInBuffer, sizeof(buffer) - isOffsetInBuffer);
             exit_on_fail_with_errno(len >= 0, "Read() failed.");
             // Iterate over the buffer and split by \r\n characters
-            int i = 0;
-            for (i = 0; i < len - 1; i++) {
-                if (!(buffer[i] == '\r' && buffer[i+1] == '\n')) {
+            int i;
+            for (i = 0; i < len - 1 + isOffsetInBuffer; i++) {
+                if (!(buffer[i] == '\r' && buffer[i + 1] == '\n')) {
                     remainingCharacters += buffer[i];
                     clrfBefore = false;
                 } else if (!clrfBefore) {
@@ -87,37 +87,34 @@ public:
             } else {
                 isOffsetInBuffer = false;
             }
-
         }
     }
+
 private:
     std::vector<CorrelatedFile> correlatedFiles;
     std::string filesDir;
+
     bool handleSingleRequest(std::vector<std::string> tokens, int socket) {
-        for (auto t : tokens) {
-            std::cout << "{ " << t << "}\n";
-        }
+        bool closeConnection;
+
         std::optional<HttpMessage> validated = HttpMessage::validateHttpRequest(tokens);
         if (!validated) {
-            std::cout << "Uwaga uwaga wypisuje 400 bad syntax\n";
             sendError(socket, "Bad syntax", "400");
             return true;
         }
         if (!validated.value().getStartLine().validCharacters()) {
-            std::cout << "Uwaga uwaga wypisuje 404\n";
-            sendError(socket, "Not found", "404");
-            return false;
+            closeConnection = sendError(socket, "Not found", "404");
+            return closeConnection;
         }
         auto validatedMessage = validated.value();
         const std::string method = validatedMessage.getStartLine().getMethod();
         if (method == "GET" || method == "HEAD") {
-            handleGetOrHeadRequest(validatedMessage, socket, method == "GET");
+            closeConnection = handleGetOrHeadRequest(validatedMessage, socket, method == "GET");
         } else {
             sendError(socket, "Not implemented", "501");
             return true;
         }
         // Check if "Connection: close" is in the headers.
-        bool closeConnection = false;
         for (const HeaderField &header : validatedMessage.getHeaderFields()) {
             if (header.getName() == "connection" && header.getValue() == "close") {
                 closeConnection = true;
@@ -126,79 +123,75 @@ private:
         return closeConnection;
     }
 
-    void sendError(int socket, const std::string &reasoning, const std::string &statusCode) {
+    bool sendError(int socket, const std::string &reasoning, const std::string &statusCode) {
         std::string statusLine = HttpMessage::generateResponseStatusLine(statusCode, reasoning);
         std::string toSend;
         if (statusCode != "404") {
             toSend = HttpMessage::generateHttpString({statusLine,
                                                       "Connection: close",
-                                                      });
+                                                     });
         } else {
             toSend = HttpMessage::generateHttpString({statusLine});
         }
 
-        exit_on_fail_with_errno(write(socket, toSend.c_str(), toSend.size()) >= 0, "Write() failed.");
+        int bytesWritten = write(socket, toSend.c_str(), toSend.size());
+        return bytesWritten != toSend.size();
     }
 
-    void sendOctetStream(int socket, std::streamsize bytesToSend) {
+    bool sendOctetStream(int socket, std::streamsize bytesToSend) {
         std::string statusLine = HttpMessage::generateResponseStatusLine("200", "OK");
         std::string toSend = HttpMessage::generateHttpString({statusLine,
-                                                "Content-Type: application/octet-stream",
-                                                "Content-Length: " + std::to_string(bytesToSend)
-                                                });
-        exit_on_fail_with_errno(write(socket, toSend.c_str(), toSend.size()) >= 0, "Write() failed.");
+                                                              "Content-Type: application/octet-stream",
+                                                              "Content-Length: " + std::to_string(bytesToSend)
+                                                             });
+        int bytesWritten = write(socket, toSend.c_str(), toSend.size());
+        return bytesWritten != toSend.size();
     }
 
-    void sendRedirectToCorrelatedServer(int socket, const CorrelatedFile &cf) {
+    bool sendRedirectToCorrelatedServer(int socket, const CorrelatedFile &cf) {
         std::string statusLine = HttpMessage::generateResponseStatusLine("302", "Redirected");
         std::string toSend = HttpMessage::generateHttpString({statusLine,
                                                               "Location: " + cf.toString(),
                                                              });
-        exit_on_fail_with_errno(write(socket, toSend.c_str(), toSend.size()) >= 0, "Write() failed.");
+        int bytesWritten = write(socket, toSend.c_str(), toSend.size());
+        return bytesWritten != toSend.size();
     }
 
-    void handleGetOrHeadRequest(const HttpMessage &hm, int socket, bool writeContent) {
-        std::string filename = hm.getStartLine().getRequestTarget();
+    bool handleGetOrHeadRequest(const HttpMessage &hm, int socket, bool writeContent) {
+        const std::string requestTarget = hm.getStartLine().getRequestTarget();
+        std::string filename = requestTarget;
         if (!validatePath(filesDir, filename)) {
-            sendError(socket, "400", "Malicious path detected");
-            return;
+            return sendError(socket, "Not found", "404");
         }
         filename = filesDir + filename;
-        if (!std::filesystem::is_regular_file(filename)) {
-            sendError(socket, "Not found", "404");
-            return;
-        }
-
         if (!std::filesystem::exists(filename)) { // Search in correlated files list.
-            std::cerr << "Nie ma takiego pliku, sprawdzam w correlated..." << std::endl;
-            bool found = false;
             for (const CorrelatedFile &f : correlatedFiles) {
-                if (f.resource == filename) {
-                    found = true;
-                    sendRedirectToCorrelatedServer(socket, f);
-                    break;
+                if (f.resource == requestTarget) {
+                    return sendRedirectToCorrelatedServer(socket, f);
                 }
             }
-
-            if (!found) {
-                sendError(socket, "Not found", "404");
-            }
+            return sendError(socket, "Not found", "404");
         } else {
+            if (!std::filesystem::is_regular_file(filename)) {
+                return sendError(socket, "Not found", "404");
+            }
             std::ifstream is(filename, std::ios::in | std::ios::binary);
             std::uintmax_t fileSize = std::filesystem::file_size(filename);
-            sendOctetStream(socket, fileSize);
+            bool isOk = sendOctetStream(socket, fileSize);
             std::vector<char> buffer(4096);
             if (writeContent) {
                 do {
                     is.read(buffer.data(), 4096);
                     std::streamsize bytesRead = is.gcount();
-                    exit_on_fail_with_errno(write(socket, buffer.data(), bytesRead) >= 0, "Write() failed.");
+                    int bytesSent = write(socket, buffer.data(), bytesRead);
+                    isOk = isOk | (bytesSent != bytesRead);
                 } while (is.good());
                 exit_on_fail(is.eof(), "Reading file has failed.");
             }
+            return isOk;
         }
     }
 };
 
 
-#endif //SIK_CONNECTIONHANDLER_H
+#endif //ZALICZENIOWE1_CONNECTIONHANDLER_H

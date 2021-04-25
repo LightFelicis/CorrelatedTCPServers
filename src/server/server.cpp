@@ -10,11 +10,13 @@
 #include <sys/socket.h>
 #include <filesystem>
 #include <unistd.h>
+#include <csignal>
 
 #include "../utils/serverAssertions.h"
 #include "connectionHandler.h"
 
 void startServer(uint16_t portnum, const std::string &filesDirectory, const std::string &correlatedServersFile) {
+    signal(SIGPIPE, SIG_IGN);
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     exit_on_fail_with_errno(sockfd >= 0, "Socket() failed.");
     sockaddr_in address;
@@ -23,25 +25,22 @@ void startServer(uint16_t portnum, const std::string &filesDirectory, const std:
     address.sin_port = htons(portnum);
 
     ConnectionHandler ch(filesDirectory, correlatedServersFile);
-    exit_on_fail_with_errno(bind(sockfd, (sockaddr *)&address, sizeof(address)) >= 0, "Bind() error.");
+    exit_on_fail_with_errno(bind(sockfd, (sockaddr *) &address, sizeof(address)) >= 0, "Bind() error.");
     exit_on_fail(listen(sockfd, 5) >= 0, "Listen() failed");
 
     while (true) {
         sockaddr_in client_address;
         socklen_t client_address_len = sizeof(client_address);
-        // get client connection from the socket
+        // Get client connection from the socket.
         int msg_sock = accept(sockfd, (struct sockaddr *) &client_address, &client_address_len);
         exit_on_fail_with_errno(msg_sock >= 0, "Accept() error.");
-        std::cout << "Handluję połączenie..." << std::endl;
         ch.handleIncomingConnection(msg_sock);
-        std::cout << "Zhandlowałam" << std::endl;
         exit_on_fail_with_errno(close(msg_sock) >= 0, "Close(socket) failed.");
     }
 }
 
 int main(int argc, char **argv) {
     exit_on_fail(argc >= 3 && argc < 5, "Usage: ./server directory_with_files correlated_servers_file [port_num]");
-    std::cout << "Initial checks passed..." << std::endl;
     uint16_t port_num = 8080;
     if (argc == 4) {
         try {
@@ -52,8 +51,9 @@ int main(int argc, char **argv) {
             exit_on_fail(false, e.what());
         }
     }
-    exit_on_fail(std::filesystem::exists(argv[1]) && std::filesystem::is_directory(argv[1]), "Server's files directory doesn't exists.");
-    exit_on_fail(std::filesystem::exists(argv[2]) && std::filesystem::is_regular_file(argv[2]), "Correlated servers file doesn't exists.");
-    std::cout << "Starting server..." << std::endl;
+    exit_on_fail(std::filesystem::exists(argv[1]) && std::filesystem::is_directory(argv[1]),
+                 "Server's files directory doesn't exists.");
+    exit_on_fail(std::filesystem::exists(argv[2]) && std::filesystem::is_regular_file(argv[2]),
+                 "Correlated servers file doesn't exists.");
     startServer(port_num, argv[1], argv[2]);
 }
