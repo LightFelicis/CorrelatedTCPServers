@@ -135,7 +135,7 @@ private:
             toSend = HttpMessage::generateHttpString({statusLine});
         }
 
-        int bytesWritten = write(socket, toSend.c_str(), toSend.size());
+        long unsigned int bytesWritten = write(socket, toSend.c_str(), toSend.size());
         return bytesWritten != toSend.size();
     }
 
@@ -145,7 +145,7 @@ private:
                                                               "Content-Type: application/octet-stream",
                                                               "Content-Length: " + std::to_string(bytesToSend)
                                                              });
-        int bytesWritten = write(socket, toSend.c_str(), toSend.size());
+        long unsigned int bytesWritten = write(socket, toSend.c_str(), toSend.size());
         return bytesWritten != toSend.size();
     }
 
@@ -154,7 +154,7 @@ private:
         std::string toSend = HttpMessage::generateHttpString({statusLine,
                                                               "Location: " + cf.toString(),
                                                              });
-        int bytesWritten = write(socket, toSend.c_str(), toSend.size());
+        long unsigned int bytesWritten = write(socket, toSend.c_str(), toSend.size());
         return bytesWritten != toSend.size();
     }
 
