@@ -123,19 +123,13 @@ private:
         exit_on_fail_with_errno(write(socket, toSend.c_str(), toSend.size()) >= 0, "Write() failed.");
     }
 
-    void sendOctetStream(int socket, const char *buffer, std::streamsize bytesToSend, bool includeData) {
+    void sendOctetStream(int socket, std::streamsize bytesToSend) {
         std::string contentType = "application/octet-stream";
         std::string statusLine = HttpMessage::generateResponseStatusLine("200", "OK");
         std::string toSend = HttpMessage::generateHttpString({statusLine,
                                                 "Content-Type: application/octet-stream",
                                                 "Content-Length: " + std::to_string(bytesToSend)
                                                 });
-        // Adding the buffer
-        if (includeData) {
-            for (int i = 0; i < bytesToSend; i++) {
-                toSend += buffer[i];
-            }
-        }
         exit_on_fail_with_errno(write(socket, toSend.c_str(), toSend.size()) >= 0, "Write() failed.");
     }
 
@@ -148,10 +142,8 @@ private:
     }
 
     void handleGetOrHeadRequest(const HttpMessage &hm, int socket, bool writeContent) {
-        std::uintmax_t fileSize = 0;
-        std::string contentType = "application/octet-stream";
         std::string filename = hm.getStartLine().getRequestTarget();
-
+        filename = std::filesystem::canonical(filesDir + filename).string();
         if (!std::filesystem::exists(filename)) { // Search in correlated files list.
             bool found = false;
             for (const CorrelatedFile &f : correlatedFiles) {
@@ -167,12 +159,17 @@ private:
             }
         } else {
             std::ifstream is(filename, std::ios::in | std::ios::binary);
+            std::uintmax_t fileSize = std::filesystem::file_size(filename);
+            sendOctetStream(socket, fileSize);
             char *buffer = new char[4096];
-            while(is.read(buffer, 4096)) {
-                exit_on_fail(!is.failbit, "Reading file has failed.");
-                std::streamsize bytesRead = is.gcount();
-                sendOctetStream(socket, buffer, bytesRead, writeContent);
+            if (writeContent) {
+                while (is.read(buffer, 4096)) {
+                    exit_on_fail(!is.failbit, "Reading file has failed.");
+                    std::streamsize bytesRead = is.gcount();
+                    exit_on_fail_with_errno(write(socket, buffer, bytesRead) >= 0, "Write() failed.");
+                }
             }
+            free(buffer);
         }
     }
 };

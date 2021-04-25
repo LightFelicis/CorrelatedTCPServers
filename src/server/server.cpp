@@ -37,7 +37,7 @@ void startServer(uint16_t portnum, const std::string &filesDirectory, const std:
 
 int main(int argc, char **argv) {
     exit_on_fail(argc >= 3 && argc < 5, "Usage: ./server directory_with_files correlated_servers_file [port_num]");
-
+    std::cout << "Initial checks passed..." << std::endl;
     uint16_t port_num = 8080;
     if (argc == 4) {
         try {
@@ -50,5 +50,6 @@ int main(int argc, char **argv) {
     }
     exit_on_fail(std::filesystem::exists(argv[1]) && std::filesystem::is_directory(argv[1]), "Server's files directory doesn't exists.");
     exit_on_fail(std::filesystem::exists(argv[2]) && std::filesystem::is_regular_file(argv[2]), "Correlated servers file doesn't exists.");
+    std::cout << "Starting server..." << std::endl;
     startServer(port_num, argv[1], argv[2]);
 }
