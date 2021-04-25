@@ -8,6 +8,7 @@
 
 #include "../utils/serverAssertions.h"
 #include "../utils/httpParsers.h"
+#include "../utils/pathUtils.h"
 
 struct CorrelatedFile {
     CorrelatedFile(const std::string &s) {
@@ -109,7 +110,7 @@ private:
         // Check if "Connection: close" is in the headers.
         bool closeConnection = false;
         for (const HeaderField &header : validatedMessage.getHeaderFields()) {
-            if (header.getName() == "Connection" && header.getValue() == "close") {
+            if (header.getName() == "connection" && header.getValue() == "close") {
                 closeConnection = true;
             }
         }
@@ -125,7 +126,6 @@ private:
     }
 
     void sendOctetStream(int socket, std::streamsize bytesToSend) {
-        std::string contentType = "application/octet-stream";
         std::string statusLine = HttpMessage::generateResponseStatusLine("200", "OK");
         std::string toSend = HttpMessage::generateHttpString({statusLine,
                                                 "Content-Type: application/octet-stream",
@@ -144,8 +144,16 @@ private:
 
     void handleGetOrHeadRequest(const HttpMessage &hm, int socket, bool writeContent) {
         std::string filename = hm.getStartLine().getRequestTarget();
-        filename = std::filesystem::canonical(filesDir + filename).string();
+        std::cout << "Dostałam plik : " << filename << std::endl;
+        if (!validatePath(filesDir, filename)) {
+            sendError(socket, "400", "Malicious path detected");
+            return;
+        }
+        filename = filesDir + filename;
+        std::cout << "Znormalizowana ścieżka: " << filename << std::endl;
+
         if (!std::filesystem::exists(filename)) { // Search in correlated files list.
+            std::cerr << "Nie ma takiego pliku, sprawdzam w correlated..." << std::endl;
             bool found = false;
             for (const CorrelatedFile &f : correlatedFiles) {
                 if (f.resource == filename) {
@@ -162,15 +170,15 @@ private:
             std::ifstream is(filename, std::ios::in | std::ios::binary);
             std::uintmax_t fileSize = std::filesystem::file_size(filename);
             sendOctetStream(socket, fileSize);
-            char *buffer = new char[4096];
+            std::vector<char> buffer(4096);
             if (writeContent) {
-                while (is.read(buffer, 4096)) {
-                    exit_on_fail(!is.failbit, "Reading file has failed.");
+                do {
+                    is.read(buffer.data(), 4096);
                     std::streamsize bytesRead = is.gcount();
-                    exit_on_fail_with_errno(write(socket, buffer, bytesRead) >= 0, "Write() failed.");
-                }
+                    exit_on_fail_with_errno(write(socket, buffer.data(), bytesRead) >= 0, "Write() failed.");
+                } while (is.good());
+                exit_on_fail(is.eof(), "Reading file has failed.");
             }
-            free(buffer);
         }
     }
 };

@@ -24,13 +24,17 @@ void startServer(uint16_t portnum, const std::string &filesDirectory, const std:
 
     ConnectionHandler ch(filesDirectory, correlatedServersFile);
     exit_on_fail_with_errno(bind(sockfd, (sockaddr *)&address, sizeof(address)) >= 0, "Bind() error.");
+    exit_on_fail(listen(sockfd, 5) >= 0, "Listen() failed");
+
     while (true) {
         sockaddr_in client_address;
         socklen_t client_address_len = sizeof(client_address);
         // get client connection from the socket
         int msg_sock = accept(sockfd, (struct sockaddr *) &client_address, &client_address_len);
         exit_on_fail_with_errno(msg_sock >= 0, "Accept() error.");
+        std::cout << "Handluję połączenie..." << std::endl;
         ch.handleIncomingConnection(msg_sock);
+        std::cout << "Zhandlowałam" << std::endl;
         exit_on_fail_with_errno(close(msg_sock) >= 0, "Close(socket) failed.");
     }
 }

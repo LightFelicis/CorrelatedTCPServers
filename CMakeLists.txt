@@ -9,13 +9,15 @@ set(files
         src/server/connectionHandler.h
         src/utils/serverAssertions.h
         src/utils/serverAssertions.cpp
+        src/utils/pathUtils.h
+        src/utils/pathUtils.cpp
         )
 
 # Locate GTest
 find_package(GTest REQUIRED)
 
 # Link runTests with what we want to test and the GTest library
-add_executable(runTests src/utils/tests/parsingTests.cpp src/server/tests/parsingTests.cpp ${files})
+add_executable(runTests src/utils/tests/parsingTests.cpp src/server/tests/parsingTests.cpp src/utils/tests/pathValidatingTests.cpp ${files})
 add_executable(serwer src/server/server.cpp ${files})
 
 target_link_libraries(runTests GTest::Main)

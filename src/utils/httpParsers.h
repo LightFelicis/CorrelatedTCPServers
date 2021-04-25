@@ -43,7 +43,7 @@ private:
 class HeaderField {
 public:
     static std::optional<HeaderField> validateString(const std::string &s) {
-        const std::regex headerFieldRegex(R"regex(([^\s:]+):( *)(\S+)( *))regex");
+        const std::regex headerFieldRegex(R"regex(([^\s:]+):( *)(.+?)( *))regex");
         std::cmatch m;
         if (!std::regex_match(s.c_str(), m, headerFieldRegex)) {
             return {};
@@ -52,11 +52,17 @@ public:
          * Field names other than explicitly described should be ignored. It's important to mark them
          * as such, because repeating non-ignored field names in one request is an error.
          * */
-        static const std::array<std::string, 4> acceptedFieldnames = {"Connection", "Content-Length",
-                                                                      "Server", "Content-Type"};
-        auto it = std::find(acceptedFieldnames.begin(), acceptedFieldnames.end(), m[1]);
+        std::string method = m[1];
+        std::string value = m[3];
+        std::transform(method.begin(), method.end(), method.begin(),
+                       [](unsigned char c){ return std::tolower(c); });
+        std::transform(value.begin(), value.end(), value.begin(),
+                       [](unsigned char c){ return std::tolower(c); });
+        static const std::array<std::string, 4> acceptedFieldnames = {"connection", "content-length",
+                                                                      "server", "content-Type"};
+        auto it = std::find(acceptedFieldnames.begin(), acceptedFieldnames.end(), method);
         bool ignored = (it == acceptedFieldnames.end());
-        return HeaderField(m[1], m[3], ignored);
+        return HeaderField(method, value, ignored);
     }
 
     static std::optional<HeaderField> validateRequestString(const std::string &s) {
@@ -64,13 +70,14 @@ public:
         if (!res) {
             return {};
         }
-        static const std::array<std::string, 2> acceptedFieldnames = {"Connection", "Content-Length"};
+
+        static const std::array<std::string, 2> acceptedFieldnames = {"connection", "content-length"};
         auto it = std::find(acceptedFieldnames.begin(), acceptedFieldnames.end(), res.value().getName());
         bool ignored = (it == acceptedFieldnames.end());
         /*
          * Additional check for Content-Length value -- it is mandatory that it's 0 in request field.
          * */
-        if (res.value().getName() == "Content-Length" && res.value().getValue() != "0") {
+        if (res.value().getName() == "content-length" && res.value().getValue() != "0") {
             return {};
         }
         res.value().setIsIgnored(ignored);
@@ -107,7 +114,7 @@ private:
 class HttpMessage {
 public:
     static std::string generateResponseStatusLine(const std::string &statusCode, const std::string &reasonPhrase) {
-        return "HTTP/1.1 " +  statusCode + " " + reasonPhrase + "\n\r";
+        return "HTTP/1.1 " +  statusCode + " " + reasonPhrase;
     }
 
     static std::optional<HttpMessage> validateHttpRequest(const std::vector<std::string> &s) {

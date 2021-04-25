@@ -28,12 +28,12 @@ TEST(Startline_parsing, no_backslash_in_path) {
 TEST(HeaderField_parsing, simple) {
     std::optional<HeaderField> res = HeaderField::validateString("Content-Length:  0  ");
     ASSERT_TRUE(res);
-    ASSERT_EQ(res.value().getName(), "Content-Length");
+    ASSERT_EQ(res.value().getName(), "content-length");
     ASSERT_EQ(res.value().getValue(), "0");
     ASSERT_FALSE(res.value().isIgnored());
-    std::optional<HeaderField> res2 = HeaderField::validateString("Connection:close");
+    std::optional<HeaderField> res2 = HeaderField::validateString("connection:close");
     ASSERT_TRUE(res2);
-    ASSERT_EQ(res2.value().getName(), "Connection");
+    ASSERT_EQ(res2.value().getName(), "connection");
     ASSERT_EQ(res2.value().getValue(), "close");
     ASSERT_FALSE(res2.value().isIgnored());
 }
@@ -49,7 +49,7 @@ TEST(HeaderField_parsing, whitespace_error) {
 }
 
 TEST(RequestHeaderField_parsing, invalid_content_length) {
-    std::optional<HeaderField> res = HeaderField::validateRequestString("Content-Length:  12");
+    std::optional<HeaderField> res = HeaderField::validateRequestString("content-length:  12");
     ASSERT_FALSE(res);
 }
 
